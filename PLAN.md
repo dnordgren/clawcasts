@@ -28,11 +28,10 @@ Pocket Casts.
    phantom episodes.
 4. **Ordering is pubDate ordering.** Podcatchers sort by pubDate, so
    "reorder" means rewriting pubDates on sync. Rules:
-   - Only ever bump pubDates forward, never backward, to avoid clients
-     resurfacing played episodes.
-   - Queue position 0 is newest. On sync, positions map to descending
-     timestamps anchored at now, clamped to be monotonic with each
-     episode's previous published pubDate.
+   - Queue position 0 is newest: position `i` gets `now - (i+1) minute`.
+   - pubDates are rewritten from scratch on every sync (GUIDs keep
+     played state stable in clients; ordering always matches the
+     manifest exactly).
 5. **Archive is a second channel**, not deletion. `mark-listened` moves
    the episode between manifests. Media files stay put.
 6. **Caching strategy.** RSS XML gets near-zero TTL (or a CloudFront

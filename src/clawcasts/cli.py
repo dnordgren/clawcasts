@@ -50,6 +50,19 @@ def init() -> None:
     click.echo(f"Wrote example config: {path}")
 
 
+def _remote_size(url: str) -> int | None:
+    import urllib.request
+
+    req = urllib.request.Request(url, method="HEAD",
+                                 headers={"User-Agent": "clawcasts/0.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            length = resp.headers.get("Content-Length")
+            return int(length) if length else None
+    except OSError:
+        return None
+
+
 @main.command()
 @click.option("--title", required=True)
 @click.option("--url", help="Remote audio URL for an externally hosted episode.")
@@ -66,9 +79,13 @@ def add(title: str, url: str | None, local_file: str | None,
         raise click.UsageError("Provide --url or --file.")
     kwargs = {"title": title, "description": description}
     if url:
+        size = _remote_size(url)
         episode = Episode.create(source_kind="rss",
                                  source_detail={"url": url},
-                                 audio_url=url, status=STATUS_READY, **kwargs)
+                                 audio_url=url, status=STATUS_READY,
+                                 file_size_bytes=size, **kwargs)
+        if size is None:
+            click.echo("Warning: could not determine remote file size.", err=True)
     else:
         episode = Episode.create(source_kind="narration",
                                  local_path=str(Path(local_file).resolve()),

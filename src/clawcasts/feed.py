@@ -38,8 +38,7 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
     fg.podcast.itunes_block(True)
 
     now = datetime.now(timezone.utc)
-    anchor = now
-    for episode in manifest.episodes:
+    for i, episode in enumerate(manifest.episodes):
         fe = fg.add_entry()
         fe.id(episode.guid)
         fe.title(episode.title)
@@ -60,17 +59,9 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
         if duration:
             fe.podcast.itunes_duration(duration)
 
-        published = episode.pubdate_published
-        floor = (datetime.fromisoformat(published) + timedelta(seconds=1)
-                 if published else None)
-        slot = anchor - timedelta(minutes=len(manifest.episodes))
-        pubdate = max(slot, floor) if floor else slot
-        if pubdate > now:
-            pubdate = now
-        if not episode.pubdate_published:
-            episode.pubdate_published = pubdate.isoformat()
+        pubdate = now - timedelta(minutes=(i + 1))
+        episode.pubdate_published = pubdate.isoformat()
         fe.pubDate(pubdate)
-        anchor = pubdate - timedelta(seconds=1)
 
     return fg.rss_str(pretty=True)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -87,7 +88,6 @@ def execute(plan: SyncPlan, dry_run: bool = True,
             InvalidationBatch={
                 "Paths": {"Quantity": len(plan.rss_keys),
                           "Items": [f"/{k}" for k in plan.rss_keys]},
-                "CallerReference": plan.media[0].key if plan.media
-                else plan.rss_keys["queue.xml"],
+                "CallerReference": f"clawcasts-{uuid.uuid4()}",
             },
         )
