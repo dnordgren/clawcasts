@@ -36,16 +36,20 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
     if author and channel.get("email"):
         fg.podcast.itunes_owner(name=author, email=channel["email"])
     fg.podcast.itunes_block(True)
+    if channel.get("artwork"):
+        fg.podcast.itunes_image(channel["artwork"])
+        fg.logo(channel["artwork"])
+        fg.image(url=channel["artwork"], title=fg.title(),
+                 link=channel.get("link", public_base))
 
     now = datetime.now(timezone.utc)
     for i, episode in enumerate(manifest.episodes):
         fe = fg.add_entry()
         fe.id(episode.guid)
         fe.title(episode.title)
-        if episode.description:
-            fe.description(episode.description)
-        else:
-            fe.description(episode.title)
+
+        pubdate = now - timedelta(minutes=(i + 1))
+        episode.pubdate_published = pubdate.isoformat()
 
         audio_url = episode.audio_url
         if not audio_url and episode.local_path:
@@ -55,12 +59,19 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
             continue
         size = episode.file_size_bytes or 0
         fe.enclosure(audio_url, str(size), episode.mime_type)
+        if episode.link:
+            fe.link(href=episode.link)
+        if episode.content_html:
+            fe.content(episode.content_html)
+        if episode.description:
+            fe.description(episode.description)
+        else:
+            fe.description(episode.title)
+        if episode.image_url:
+            fe.podcast.itunes_image(episode.image_url)
         duration = _format_duration(episode.duration_seconds)
         if duration:
             fe.podcast.itunes_duration(duration)
-
-        pubdate = now - timedelta(minutes=(i + 1))
-        episode.pubdate_published = pubdate.isoformat()
         fe.pubDate(pubdate)
 
     return fg.rss_str(pretty=True)

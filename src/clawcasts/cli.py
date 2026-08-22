@@ -247,9 +247,64 @@ def narrate(doc: str, title: str, voice: str) -> None:
 
 @main.command()
 @click.argument("rss_url")
-def import_feed(rss_url: str) -> None:
+@click.option("--limit", default=15, help="Max episodes to list.")
+def import_feed(rss_url: str, limit: int) -> None:
     """List episodes available to lift from an external RSS feed."""
-    raise NotImplementedError("import-feed is not implemented yet (M3).")
+    from .rsssource import fetch_channel
+
+    channel = fetch_channel(rss_url)
+    click.echo(f"Feed: {channel['title']} "
+               f"({len(channel['items'])} items)")
+    shown = 0
+    for i, item in enumerate(channel["items"]):
+        if not item["enclosure_url"] or shown >= limit:
+            continue
+        dur = item["duration_seconds"]
+        dur_s = f"{dur // 60}m" if dur else "?"
+        date = (item["pubdate_source"] or "")[:16]
+        click.echo(f"{i:4}  [{dur_s:>5}] {date}  {item['title'][:70]}")
+        shown += 1
+
+
+@main.command("add-from-feed")
+@click.argument("rss_url")
+@click.option("--match", required=True,
+              help="Case-insensitive substring of the episode title.")
+@click.option("--feed", default=QUEUE, type=click.Choice([QUEUE, ARCHIVE]))
+@click.option("--position", type=int, default=None,
+              help="Insert at this queue position (default: end).")
+def add_from_feed(rss_url: str, match: str, feed: str,
+                  position: int | None) -> None:
+    """Add an external episode with full metadata from its source feed."""
+    from .rsssource import fetch_channel, find_item
+
+    channel = fetch_channel(rss_url)
+    try:
+        item = find_item(channel, match)
+    except LookupError as exc:
+        raise click.ClickException(str(exc))
+    episode = Episode.create(
+        title=item["title"],
+        description=item["description"] or "",
+        content_html=item["content_html"] or "",
+        image_url=item["image_url"],
+        link=item["link"],
+        source_kind="rss",
+        source_detail={"feed": rss_url, "guid": item["guid"]},
+        audio_url=item["enclosure_url"],
+        duration_seconds=item["duration_seconds"],
+        file_size_bytes=item["file_size_bytes"]
+        or _remote_size(item["enclosure_url"]),
+        mime_type=item["mime_type"],
+        status=STATUS_READY,
+    )
+    manifest = Manifest.load(feed)
+    pos = manifest.add(episode, position)
+    manifest.save()
+    short = episode.guid[:8]
+    size_mb = (episode.file_size_bytes or 0) / 1_048_576
+    click.echo(f"Added [{pos}] {item['title'][:60]} ({short}, "
+               f"{size_mb:.0f} MB) to '{feed}'")
 
 
 def _load_toml(path: Path) -> dict:

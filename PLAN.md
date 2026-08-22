@@ -78,10 +78,11 @@ clawcasts import-feed <rss-url>         # List episodes available to lift
    invalidation. See "Live deployment" below.
 3. **M2 — NEXT.** `narrate` wired to Kokoro; duration/file-size
    extraction (mutagen or ffprobe); episode artwork.
-4. **M3.** `import-feed <rss-url>` / `add --from-rss`: parse a feed,
-   list episodes with numbers, add by index. The manual flow that works
-   today: fetch feed XML, extract `<enclosure url>`, run
-   `clawcasts add --url ...`. See SKILL notes in the OpenClaw vault.
+4. **M3 — MOSTLY DONE.** `import-feed <rss-url>` lists episodes;
+   `add-from-feed <rss-url> --match "<title substring>"` lifts an
+   episode with full metadata (description/show notes, episode artwork,
+   duration, link, enclosure size). Remaining: optional media copy to
+   S3 for episodes whose upstream hosting may vanish; OPML export.
 5. **M4 — ideas.** OPML export; prune archive older than N months;
    chapter markers (`podcast:chapters`) for narrated docs; optional
    cron/systemd timer for scheduled syncs on the claw machine.
