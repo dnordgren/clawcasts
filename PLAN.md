@@ -72,14 +72,50 @@ clawcasts import-feed <rss-url>         # List episodes available to lift
 
 ## Phases
 
-1. **M0 (this scaffold).** State model, local commands fully working,
-   `sync` generates RSS locally and prints the upload plan. Remote stubs.
-2. **M1.** S3 upload + RSS publish + CloudFront invalidation. Real
-   `sync`. AWS creds from environment or `~/.aws`.
-3. **M2.** `narrate` wired to Kokoro; duration/file-size extraction
-   (mutagen or ffprobe); artwork.
-4. **M3.** `import-feed` / `--from-rss` episode lifting; OPML export;
-   optional cron-friendly `sync` daemon notes.
+1. **M0 — DONE.** State model, local commands fully working, `sync`
+   generates RSS locally and prints the upload plan.
+2. **M1 — DONE, LIVE.** S3 upload + RSS publish + CloudFront
+   invalidation. See "Live deployment" below.
+3. **M2 — NEXT.** `narrate` wired to Kokoro; duration/file-size
+   extraction (mutagen or ffprobe); episode artwork.
+4. **M3.** `import-feed <rss-url>` / `add --from-rss`: parse a feed,
+   list episodes with numbers, add by index. The manual flow that works
+   today: fetch feed XML, extract `<enclosure url>`, run
+   `clawcasts add --url ...`. See SKILL notes in the OpenClaw vault.
+5. **M4 — ideas.** OPML export; prune archive older than N months;
+   chapter markers (`podcast:chapters`) for narrated docs; optional
+   cron/systemd timer for scheduled syncs on the claw machine.
+
+## Live deployment
+
+- Bucket: `dereknordgren-clawcasts` (us-east-1), no key prefix. Media at
+  `media/<guid>/<filename>`; feeds at `/queue.xml` and `/archive.xml`.
+- CloudFront distribution `E3SHNCWWKF8OI7`, domain
+  `https://d1kmujx7to45cg.cloudfront.net`, OAC-protected origin (objects
+  are private; only CloudFront serves them). RSS gets
+  `max-age=0, must-revalidate` plus an invalidation of both `.xml` paths
+  per sync; media gets `max-age=31536000, immutable`.
+- AWS profile: `clawcasts` (IAM user in account 354450307824). Policy is
+  scoped to this bucket + distribution; it cannot list buckets or
+  distributions but can read them by ID.
+- Queue feed (subscribe in Pocket Casts):
+  `https://d1kmujx7to45cg.cloudfront.net/queue.xml`
+  Archive feed: `https://d1kmujx7to45cg.cloudfront.net/archive.xml`
+
+## Notes for the next agent
+
+- Run everything through the CLI; never hand-edit manifests or RSS.
+- Always `sync --dry-run` before `sync`; show Derek the plan first.
+- Env overrides for testing: `CLAWCASTS_STATE_DIR`,
+  `CLAWCASTS_CONFIG`. Local dev: `uv sync && uv run clawcasts ...`.
+- Known behavior: feedgen emits items sorted ascending by pubDate in the
+  XML document; clients order by pubDate anyway, so effective queue
+  order always matches manifest position 0 = newest.
+- External episodes store `source_kind="rss"` with the original URL;
+  media is not copied to S3 (bandwidth-cheap, but means deletion of the
+  upstream episode breaks playback).
+- `mark-listened`/`mark-new` transfer between the two manifests; media
+  objects stay put so both feeds can share them.
 
 ## Open questions
 
