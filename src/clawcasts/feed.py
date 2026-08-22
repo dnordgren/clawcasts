@@ -67,6 +67,8 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
         pubdate = max(slot, floor) if floor else slot
         if pubdate > now:
             pubdate = now
+        if not episode.pubdate_published:
+            episode.pubdate_published = pubdate.isoformat()
         fe.pubDate(pubdate)
         anchor = pubdate - timedelta(seconds=1)
 

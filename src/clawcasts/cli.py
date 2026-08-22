@@ -9,7 +9,8 @@ import click
 from . import __version__
 from . import feed as feedgen_mod
 from .state import (ARCHIVE, QUEUE, Episode, Manifest, STATUS_PENDING_AUDIO,
-                    STATUS_READY, now_iso, state_dir, transfer)
+                    STATUS_PUBLISHED, STATUS_READY, now_iso, state_dir,
+                    transfer)
 
 
 @click.group()
@@ -28,8 +29,10 @@ def init() -> None:
     example = "\n".join([
         "# clawcasts infrastructure config",
         "bucket = \"my-podcast-bucket\"",
-        "prefix = \"feeds/clawcasts\"",
-        "public_base = \"https://cdn.example.com/feeds/clawcasts\"",
+        "public_base = \"https://cdn.example.com\"",
+        "distribution_id = \"E1234ABCDEF\"",
+        "region = \"us-east-1\"",
+        "profile = \"clawcasts\"",
         "",
         "[queue]",
         'title = "Derek\'s Queue"',
@@ -154,38 +157,62 @@ def mark_new(prefix: str) -> None:
               help="Directory for locally generated RSS (default: <state>/out).")
 def sync(dry_run: bool, out_dir: str | None) -> None:
     """Generate RSS and print (or execute) the upload plan."""
-    from .s3sync import plan as build_plan
+    from .s3sync import build_plan, execute
 
     cfg_path = feedgen_mod.config_path()
     if not cfg_path.exists():
         raise click.ClickException(
             f"No config at {cfg_path}. Run 'clawcasts init' first.")
     cfg = _load_toml(cfg_path)
+    if not cfg.get("bucket") or not cfg.get("public_base"):
+        raise click.ClickException(
+            "Config needs 'bucket' and 'public_base' set.")
 
     out_root = Path(out_dir) if out_dir else state_dir() / "out"
     out_root.mkdir(parents=True, exist_ok=True)
 
-    base = cfg.get("public_base", "").rstrip("/")
-    for name in (QUEUE, ARCHIVE):
-        manifest = Manifest.load(name)
+    base = cfg["public_base"].rstrip("/")
+    manifests = {name: Manifest.load(name) for name in (QUEUE, ARCHIVE)}
+
+    media: list[tuple[str, str]] = []
+    for manifest in manifests.values():
+        for ep in manifest.episodes:
+            if ep.local_path and not ep.audio_url:
+                path = Path(ep.local_path)
+                if not path.exists():
+                    raise click.ClickException(
+                        f"Missing audio for '{ep.title}': {path}")
+                if not ep.file_size_bytes:
+                    ep.file_size_bytes = path.stat().st_size
+                media.append((str(path), f"media/{ep.guid}/{path.name}"))
+
+    rss: dict[str, bytes] = {}
+    for name, manifest in manifests.items():
         channel = dict(cfg.get(name, {}))
         channel.setdefault("title", name.capitalize())
         xml = feedgen_mod.build_rss(manifest, channel, base)
+        rss[f"{name}.xml"] = xml
         target = out_root / f"{name}.xml"
         target.write_bytes(xml)
-        click.echo(f"Wrote {target} ({len(manifest.episodes)} episodes)")
 
-    changed = [ep.local_path for m in (Manifest.load(QUEUE),
-               Manifest.load(ARCHIVE)) for ep in m.episodes
-               if ep.local_path and not ep.audio_url]
-    sync_plan = build_plan(cfg["bucket"], cfg["prefix"], changed)
-    for line in _format_plan(sync_plan):
+    sync_plan = build_plan(cfg, media, rss)
+    for line in sync_plan.describe():
         click.echo(line)
     if dry_run:
-        click.echo("Dry run. Re-run without --dry-run to upload (M1).")
+        click.echo("Dry run. Re-run without --dry-run to publish.")
         return
-    from .s3sync import execute
-    execute(sync_plan, dry_run=False)
+
+    execute(sync_plan, dry_run=False, profile_cfg=cfg)
+    for name, manifest in manifests.items():
+        for ep in manifest.episodes:
+            if ep.local_path and not ep.audio_url and \
+                    ep.status == STATUS_READY:
+                filename = Path(ep.local_path).name
+                ep.audio_url = f"{base}/media/{ep.guid}/{filename}"
+                ep.status = STATUS_PUBLISHED
+        manifest.save()
+    click.echo(f"Published {len(media)} media file(s) and "
+               f"{len(rss)} feed(s) to s3://{cfg['bucket']}/")
 
 
 @main.command()
@@ -221,14 +248,6 @@ def _find(manifest: Manifest, prefix: str):
         return manifest.find(prefix)
     except LookupError as exc:
         raise click.ClickException(str(exc))
-
-
-def _format_plan(p) -> list[str]:
-    lines = ["Upload plan:"]
-    lines += [f"  up   {u}" for u in p.uploads]
-    lines += [f"  rss  {r}" for r in p.rss_objects]
-    lines += [f"  inv  {i}" for i in p.invalidations]
-    return lines
 
 
 if __name__ == "__main__":
