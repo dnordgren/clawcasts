@@ -60,14 +60,16 @@ artwork).
 
 ```bash
 clawcasts init                          # Write example config if missing
-clawcasts add --title T (--url URL | --from-rss FEED --episode GUID)
+clawcasts add --title T (--url URL | --file F)
+clawcasts add-from-feed <rss-url> --match SUBSTRING
+clawcasts import-feed <rss-url>         # List episodes available to lift
+clawcasts export-opml [--out FILE]      # Queue + archive URLs for a podcatcher
 clawcasts remove <guid-prefix>
 clawcasts move <guid-prefix> (--before | --after) <other-guid> | --to N
 clawcasts list [--feed queue|archive]
 clawcasts mark-listened <guid-prefix>   # queue -> archive manifest
 clawcasts narrate <doc> --title T       # Kokoro -> mp3 -> add to queue
 clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
-clawcasts import-feed <rss-url>         # List episodes available to lift
 ```
 
 ## Phases
@@ -78,12 +80,12 @@ clawcasts import-feed <rss-url>         # List episodes available to lift
    invalidation. See "Live deployment" below.
 3. **M2 — NEXT.** `narrate` wired to Kokoro; duration/file-size
    extraction (mutagen or ffprobe); episode artwork.
-4. **M3 — MOSTLY DONE.** `import-feed <rss-url>` lists episodes;
+4. **M3 — DONE.** `import-feed <rss-url>` lists episodes;
    `add-from-feed <rss-url> --match "<title substring>"` lifts an
    episode with full metadata (description/show notes, episode artwork,
-   duration, link, enclosure size). Remaining: optional media copy to
-   S3 for episodes whose upstream hosting may vanish; OPML export.
-5. **M4 — ideas.** OPML export; prune archive older than N months;
+   duration, link, enclosure size). `export-opml` writes subscribe URLs.
+5. **M4 — ideas.** Optional media copy to S3 for episodes whose
+   upstream hosting may vanish; prune archive older than N months;
    chapter markers (`podcast:chapters`) for narrated docs; optional
    cron/systemd timer for scheduled syncs on the claw machine.
 

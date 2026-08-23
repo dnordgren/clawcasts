@@ -307,6 +307,34 @@ def add_from_feed(rss_url: str, match: str, feed: str,
                f"{size_mb:.0f} MB) to '{feed}'")
 
 
+@main.command("export-opml")
+@click.option("--out", "out_path", type=click.Path(), default=None,
+              help="Write OPML to this file (default: stdout).")
+def export_opml(out_path: str | None) -> None:
+    """Export queue and archive feed URLs as OPML for a podcatcher."""
+    from .opml import build_opml
+
+    cfg_path = feedgen_mod.config_path()
+    if not cfg_path.exists():
+        raise click.ClickException(
+            f"No config at {cfg_path}. Run 'clawcasts init' first.")
+    cfg = _load_toml(cfg_path)
+    base = (cfg.get("public_base") or "").rstrip("/")
+    if not base:
+        raise click.ClickException("Config needs 'public_base' set.")
+    outlines = []
+    for name in (QUEUE, ARCHIVE):
+        channel = cfg.get(name, {})
+        title = channel.get("title", name.capitalize())
+        outlines.append((title, f"{base}/{name}.xml"))
+    xml = build_opml("clawcasts", outlines)
+    if out_path:
+        Path(out_path).write_bytes(xml)
+        click.echo(f"Wrote {out_path}")
+    else:
+        click.echo(xml.decode(), nl=False)
+
+
 def _load_toml(path: Path) -> dict:
     try:
         import tomllib

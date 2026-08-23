@@ -15,6 +15,7 @@ uv run clawcasts --help      # Or install globally: uv tool install .
 | --- | --- |
 | `clawcasts init` | Write example config to `~/.config/clawcasts/config.toml` |
 | `clawcasts add --title T (--url URL \| --file F)` | Add an episode |
+| `clawcasts add-from-feed URL --match SUB` | Lift an episode from a source RSS feed |
 | `clawcasts list [--feed queue\|archive]` | List episodes in a feed |
 | `clawcasts move <prefix> (--to N \| --before P \| --after P)` | Reorder within a feed |
 | `clawcasts remove <prefix>` | Remove from a feed |
@@ -22,7 +23,8 @@ uv run clawcasts --help      # Or install globally: uv tool install .
 | `clawcasts mark-new <prefix>` | Archive → queue feed |
 | `clawcasts narrate <doc> --title T` | Kokoro narration → queue (M2) |
 | `clawcasts sync [--dry-run]` | Generate RSS and upload to S3 |
-| `clawcasts import-feed <rss-url>` | Lift episodes from external RSS (M3) |
+| `clawcasts import-feed <rss-url>` | List episodes available to lift |
+| `clawcasts export-opml [--out FILE]` | Export queue/archive URLs as OPML |
 
 Episode identity is a stable GUID assigned at `add` time; ordering maps
 to `pubDate` on sync, so reorders never create phantom episodes.
@@ -67,8 +69,19 @@ Note: account IDs, bucket names, and CloudFront domains are not secrets
 — they appear in every ARN and public URL. Never commit access keys or
 secret keys; those live only in `~/.aws/credentials`.
 
+## Cron
+
+`sync` is idempotent and has no daemon. Run it after local mutations, or
+on a timer if you batch edits:
+
+```cron
+15 * * * * clawcasts sync >>/var/log/clawcasts-sync.log 2>&1
+```
+
+Subscribe in a podcatcher with `clawcasts export-opml`, or the live
+URLs in PLAN.md.
+
 ## Status
 
-M0 scaffold: local state management works end to end; `sync` generates
-RSS locally and executes the upload plan. Narration (Kokoro) and
-external-feed import are not wired yet — see PLAN.md phases.
+M1 is live (S3 + CloudFront). M3 import-feed / add-from-feed / OPML
+are wired. Narration via Kokoro is still M2 — see PLAN.md phases.
