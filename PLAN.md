@@ -108,6 +108,22 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    losslessly via the ffmpeg concat demuxer (`-c copy`) into a single
    episode under `<state>/audio/`. Per-episode `--author` emits
    `itunes:author` so books carry author metadata in clients.
+7. **M5 — TODO. Security via obscurity.** Publish everything under a
+   secret path prefix so crawlers cannot find the feeds or enumerate
+   episodes. Plan:
+   - New `path_prefix` in config; `clawcasts init` generates a random
+     token (e.g. 16 hex chars) and writes it to `config.toml`.
+   - All S3 keys and feed URLs move under the prefix:
+     `<prefix>/queue.xml`, `<prefix>/archive.xml`,
+     `<prefix>/media/<guid>/<file>`.
+   - Keep the value out of this repo: redact feed URLs from README and
+     here; the bare-domain URLs already in git history are burned if
+     this repo is public, so consider private repo or a fresh
+     distribution for a clean slate.
+   - Migration (single subscriber): set prefix, `sync`, re-add the new
+     feed URL in Pocket Casts, then delete old top-level objects.
+   Signed CloudFront URLs stay out of scope: podcatchers need
+   long-lived, credential-free enclosure URLs.
 
 ## Live deployment
 
