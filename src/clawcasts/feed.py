@@ -5,8 +5,37 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from feedgen.feed import FeedGenerator
+from lxml import etree
 
 from .state import Episode, Manifest
+
+PODCAST_NS = "https://podcastindex.org/namespace/1.0"
+CHAPTERS_TYPE = "application/json+chapters"
+
+
+class _ChaptersFeedExtension:
+    def extend_ns(self):
+        return {"podcast": PODCAST_NS}
+
+    def extend_rss(self, feed):
+        pass
+
+
+class _ChaptersEntryExtension:
+    def __init__(self):
+        self._url = None
+
+    def chapters(self, url: str | None) -> str | None:
+        if url is not None:
+            self._url = url
+        return self._url
+
+    def extend_rss(self, entry):
+        if not self._url:
+            return
+        el = etree.SubElement(entry, f"{{{PODCAST_NS}}}chapters")
+        el.set("url", self._url)
+        el.set("type", CHAPTERS_TYPE)
 
 
 def config_path() -> Path:
@@ -20,6 +49,8 @@ def config_path() -> Path:
 def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
     fg = FeedGenerator()
     fg.load_extension("podcast")
+    fg.register_extension("chapters", _ChaptersFeedExtension,
+                          _ChaptersEntryExtension, atom=False, rss=True)
     fg.id(channel.get("link", public_base))
     fg.title(channel["title"])
     fg.link(href=channel.get("link", public_base), rel="alternate")
@@ -67,9 +98,14 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
             fe.description(episode.description)
         else:
             fe.description(episode.title)
+        if episode.author:
+            fe.podcast.itunes_author(episode.author)
         image_url = episode_image_url(episode, public_base)
         if image_url:
             fe.podcast.itunes_image(image_url)
+        chapters_url = episode_chapters_url(episode, public_base)
+        if chapters_url:
+            fe.chapters.chapters(chapters_url)
         duration = _format_duration(episode.duration_seconds)
         if duration:
             fe.podcast.itunes_duration(duration)
@@ -84,6 +120,16 @@ def episode_image_url(episode: Episode, public_base: str) -> str | None:
         return episode.image_url
     if episode.image_path:
         name = Path(episode.image_path).name
+        return f"{public_base}/media/{episode.guid}/{name}"
+    return None
+
+
+def episode_chapters_url(episode: Episode, public_base: str) -> str | None:
+    """Resolve an episode's chapters URL from override or local file."""
+    if episode.chapters_url:
+        return episode.chapters_url
+    if episode.chapters_path:
+        name = Path(episode.chapters_path).name
         return f"{public_base}/media/{episode.guid}/{name}"
     return None
 

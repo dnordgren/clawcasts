@@ -86,19 +86,32 @@ def _apply_image(episode: Episode, value: str) -> None:
 @click.option("--file", "local_file", type=click.Path(exists=True),
               help="Local audio file to publish later.")
 @click.option("--description", default="")
+@click.option("--author", default=None,
+              help="Episode author (e.g. book author or narrator); "
+                   "becomes itunes:author.")
 @click.option("--image", default=None,
               help="Episode artwork: http(s) URL or local image file.")
 @click.option("--feed", default=QUEUE, type=click.Choice([QUEUE, ARCHIVE]))
 @click.option("--position", type=int, default=None,
               help="Insert at this queue position (default: end).")
+@click.argument("parts", nargs=-1, type=click.Path(exists=True))
 def add(title: str, url: str | None, local_file: str | None,
-        description: str, image: str | None, feed: str,
-        position: int | None) -> None:
-    """Add an episode to a feed."""
-    if not url and not local_file:
+        description: str, author: str | None, image: str | None, feed: str,
+        position: int | None, parts: tuple[str, ...]) -> None:
+    """Add an episode to a feed.
+
+    Multiple audio files (--file plus any PARTS) are concatenated into
+    one episode in the order given.
+    """
+    local_files = tuple(f for f in ((local_file,) + parts) if f)
+    if not url and not local_files:
         raise click.UsageError("Provide --url or --file.")
     kwargs = {"title": title, "description": description}
+    if author:
+        kwargs["author"] = author
     if url:
+        if local_files:
+            raise click.UsageError("Use --url or --file, not both.")
         size = _remote_size(url)
         episode = Episode.create(source_kind="rss",
                                  source_detail={"url": url},
@@ -106,14 +119,16 @@ def add(title: str, url: str | None, local_file: str | None,
                                  file_size_bytes=size, **kwargs)
         if size is None:
             click.echo("Warning: could not determine remote file size.", err=True)
-    else:
-        path = Path(local_file).resolve()
+    elif len(local_files) == 1:
+        path = Path(local_files[0]).resolve()
         duration = _probe_duration(path)
         episode = Episode.create(
             source_kind="narration", local_path=str(path),
             duration_seconds=duration,
             file_size_bytes=path.stat().st_size,
             status=STATUS_READY, **kwargs)
+    else:
+        episode = _add_concatenated(local_files, **kwargs)
     if image:
         _apply_image(episode, image)
     manifest = Manifest.load(feed)
@@ -264,6 +279,13 @@ def sync(dry_run: bool, out_dir: str | None) -> None:
                         f"Missing artwork for '{ep.title}': {image}")
                 media.append((str(image),
                               f"media/{ep.guid}/{image.name}"))
+            if ep.chapters_path and not ep.chapters_url:
+                chapters = Path(ep.chapters_path)
+                if not chapters.exists():
+                    raise click.ClickException(
+                        f"Missing chapters file for '{ep.title}': {chapters}")
+                media.append((str(chapters),
+                              f"media/{ep.guid}/{chapters.name}"))
 
     rss: dict[str, bytes] = {}
     for name, manifest in manifests.items():
@@ -295,6 +317,10 @@ def sync(dry_run: bool, out_dir: str | None) -> None:
                 ep.image_url = \
                     f"{base}/media/{ep.guid}/{Path(ep.image_path).name}"
                 changed = True
+            if ep.chapters_path and not ep.chapters_url:
+                ep.chapters_url = \
+                    f"{base}/media/{ep.guid}/{Path(ep.chapters_path).name}"
+                changed = True
             if changed:
                 manifest.save()
     click.echo(f"Published {len(media)} media file(s) and "
@@ -315,6 +341,27 @@ def _probe_duration(path: Path) -> int | None:
     return duration
 
 
+def _add_concatenated(local_files: tuple[str, ...],
+                      **kwargs) -> Episode:
+    """Concatenate multiple audio files into one episode."""
+    from .audio import AudioToolError, concat_mp3
+
+    episode = Episode.create(source_kind="narration", status=STATUS_READY,
+                             **kwargs)
+    out_path = (state_dir() / "audio" /
+                f"{_slugify(episode.title)}-{episode.guid[:8]}"
+                f"{Path(local_files[0]).suffix.lower()}")
+    paths = [Path(f).resolve() for f in local_files]
+    try:
+        concat_mp3(paths, out_path)
+    except AudioToolError as exc:
+        raise click.ClickException(str(exc))
+    episode.local_path = str(out_path.resolve())
+    episode.duration_seconds = _probe_duration(out_path)
+    episode.file_size_bytes = out_path.stat().st_size
+    return episode
+
+
 @main.command()
 @click.argument("doc", type=click.Path(exists=True))
 @click.option("--title", required=True)
@@ -327,16 +374,21 @@ def _probe_duration(path: Path) -> int | None:
                    "description.")
 @click.option("--image", default=None,
               help="Episode artwork: http(s) URL or local image file.")
+@click.option("--chapters-depth", type=int, default=None,
+              help="Only headings at or above this level become chapter "
+                   "markers (default: all levels).")
 def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
-            description: str, image: str | None) -> None:
+            description: str, image: str | None,
+            chapters_depth: int | None) -> None:
     """Narrate a document via Kokoro and add it to the top of the queue.
 
     The calling agent must supply --description as a brief summary of
-    the transcript.
+    the transcript. Markdown headings become podcast:chapters markers.
     """
     from .audio import AudioToolError
     from .narrate import NarrateError
     from .narrate import narrate as run_narration
+    from .narrate import write_chapters_json
 
     cfg = {}
     cfg_path = feedgen_mod.config_path()
@@ -353,9 +405,10 @@ def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
                 f"{_slugify(title)}-{episode.guid[:8]}.mp3")
 
     try:
-        run_narration(doc, str(out_path), voice=voice, speed=speed,
-                      lang=lang, title=title, artist=artist,
-                      cfg=narrate_cfg)
+        _, chapters = run_narration(doc, str(out_path), voice=voice,
+                                    speed=speed, lang=lang, title=title,
+                                    artist=artist, cfg=narrate_cfg,
+                                    chapters_depth=chapters_depth)
     except (NarrateError, AudioToolError) as exc:
         raise click.ClickException(str(exc))
 
@@ -365,6 +418,11 @@ def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
     episode.file_size_bytes = audio.stat().st_size
     episode.status = STATUS_READY
 
+    if len(chapters) >= 2:
+        chapters_file = write_chapters_json(
+            audio.with_suffix(".chapters.json"), chapters)
+        episode.chapters_path = str(chapters_file.resolve())
+
     manifest = Manifest.load(QUEUE)
     manifest.add(episode, 0)
     manifest.save()
@@ -373,6 +431,9 @@ def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
     click.echo(f"Added [0] {title} ({episode.guid[:8]}, "
                f"~{minutes}m, {size_mb:.1f} MB) to '{QUEUE}'")
     click.echo(f"Audio: {episode.local_path}")
+    if episode.chapters_path:
+        click.echo(f"Chapters: {episode.chapters_path} "
+                   f"({len(chapters)} markers)")
 
 
 @main.command()
@@ -418,6 +479,7 @@ def add_from_feed(rss_url: str, match: str, feed: str,
         description=item["description"] or "",
         content_html=item["content_html"] or "",
         image_url=item["image_url"],
+        chapters_url=item["chapters_url"],
         link=item["link"],
         source_kind="rss",
         source_detail={"feed": rss_url, "guid": item["guid"]},

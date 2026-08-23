@@ -21,7 +21,7 @@ uv sync --extra narrate      # Or: uv tool install --extra narrate .
 | Command | Purpose |
 | --- | --- |
 | `clawcasts init` | Write example config to `~/.config/clawcasts/config.toml` |
-| `clawcasts add --title T (--url URL \| --file F) [--image I]` | Add an episode |
+| `clawcasts add --title T (--url URL \| --file F [PARTS...]) [--author A] [--image I]` | Add an episode; multiple files concat into one |
 | `clawcasts add-from-feed URL --match SUB` | Lift an episode from a source RSS feed |
 | `clawcasts list [--feed queue\|archive]` | List episodes in a feed |
 | `clawcasts move <prefix> (--to N \| --before P \| --after P)` | Reorder within a feed |
@@ -36,6 +36,16 @@ uv sync --extra narrate      # Or: uv tool install --extra narrate .
 
 Episode identity is a stable GUID assigned at `add` time; ordering maps
 to `pubDate` on sync, so reorders never create phantom episodes.
+
+Multiple audio files (e.g. per-part audiobook MP3s) concatenate
+losslessly into one episode via ffmpeg stream copy, in the order given:
+
+```bash
+clawcasts add --title "Book Title" --author "Jane Doe" \
+    --file part01.mp3 part02.mp3 part03.mp3
+```
+
+Per-episode `--author` becomes `itunes:author` in the RSS.
 
 Episodes without their own artwork inherit the feed's channel image
 (`artwork` key in the `[queue]`/`[archive]` config). Override per

@@ -58,6 +58,23 @@ class BuildRssArtworkTests(unittest.TestCase):
         self.assertNotIn("itunes:image", xml)
 
 
+class BuildRssAuthorTests(unittest.TestCase):
+    channel = {"title": "Queue", "description": "d", "link": "https://x"}
+
+    def _rss(self, episode: Episode) -> str:
+        return build_rss(_manifest(episode), dict(self.channel),
+                         "https://x").decode()
+
+    def test_episode_author_emits_itunes_author(self):
+        ep = _episode(author="Jane Doe")
+        xml = self._rss(ep)
+        self.assertIn("itunes:author>Jane Doe<", xml)
+
+    def test_no_episode_author_uses_channel_only(self):
+        xml = self._rss(_episode())
+        self.assertNotIn("itunes:author>Episode One<", xml)
+
+
 class FormatDurationTests(unittest.TestCase):
     def test_minutes_and_hours(self):
         self.assertEqual(_format_duration(65), "1:05")

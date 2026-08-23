@@ -24,9 +24,12 @@ class Episode:
     guid: str
     title: str
     description: str = ""
+    author: str | None = None
     content_html: str = ""
     image_url: str | None = None
     image_path: str | None = None
+    chapters_url: str | None = None
+    chapters_path: str | None = None
     link: str | None = None
     source_kind: str = "narration"  # narration | rss
     source_detail: dict = field(default_factory=dict)

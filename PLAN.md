@@ -98,6 +98,11 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    Remaining ideas: chapter markers
    (`podcast:chapters`) for narrated docs;
    optional cron/systemd timer for scheduled syncs on the claw machine.
+6. **Audiobook ingestion — DONE.** `add --file` accepts multiple files
+   (variadic PARTS after the option); more than one file concatenates
+   losslessly via the ffmpeg concat demuxer (`-c copy`) into a single
+   episode under `<state>/audio/`. Per-episode `--author` emits
+   `itunes:author` so books carry author metadata in clients.
 
 ## Live deployment
 

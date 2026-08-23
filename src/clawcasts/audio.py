@@ -37,6 +37,30 @@ def probe_duration_seconds(path: Path) -> int | None:
         return None
 
 
+def concat_mp3(paths: list[Path], out_path: Path) -> None:
+    """Concatenate mp3 files losslessly, replacing any existing output.
+
+    All inputs must share codec and sample rate; stream copy is used so
+    no re-encode happens.
+    """
+    require_ffmpeg()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    list_path = out_path.with_suffix(".concat.txt")
+    lines = [f"file '{str(p.resolve()).replace(chr(39), chr(39) * 2)}'\n"
+             for p in paths]
+    list_path.write_text("".join(lines))
+    try:
+        cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+               "-f", "concat", "-safe", "0", "-i", str(list_path),
+               "-c", "copy", str(out_path)]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise AudioToolError(
+                f"ffmpeg concat failed: {result.stderr.strip()}")
+    finally:
+        list_path.unlink(missing_ok=True)
+
+
 def encode_mp3(wav_path: Path, mp3_path: Path, title: str = "",
                artist: str = "", album: str = "") -> None:
     """Encode a WAV file to mp3, replacing any existing output."""
