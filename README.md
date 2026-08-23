@@ -21,20 +21,27 @@ uv sync --extra narrate      # Or: uv tool install --extra narrate .
 | Command | Purpose |
 | --- | --- |
 | `clawcasts init` | Write example config to `~/.config/clawcasts/config.toml` |
-| `clawcasts add --title T (--url URL \| --file F)` | Add an episode |
+| `clawcasts add --title T (--url URL \| --file F) [--image I]` | Add an episode |
 | `clawcasts add-from-feed URL --match SUB` | Lift an episode from a source RSS feed |
 | `clawcasts list [--feed queue\|archive]` | List episodes in a feed |
 | `clawcasts move <prefix> (--to N \| --before P \| --after P)` | Reorder within a feed |
 | `clawcasts remove <prefix>` | Remove from a feed |
 | `clawcasts mark-listened <prefix>` | Queue → archive feed |
 | `clawcasts mark-new <prefix>` | Archive → queue feed |
-| `clawcasts narrate <doc> --title T --description S` | Kokoro narration of a .md/.txt file → queue top |
+| `clawcasts artwork <prefix> (--image I \| --clear)` | Set or clear per-episode artwork |
+| `clawcasts narrate <doc> --title T --description S [--image I]` | Kokoro narration of a .md/.txt file → queue top |
 | `clawcasts sync [--dry-run]` | Generate RSS and upload to S3 |
 | `clawcasts import-feed <rss-url>` | List episodes available to lift |
 | `clawcasts export-opml [--out FILE]` | Export queue/archive URLs as OPML |
 
 Episode identity is a stable GUID assigned at `add` time; ordering maps
 to `pubDate` on sync, so reorders never create phantom episodes.
+
+Episodes without their own artwork inherit the feed's channel image
+(`artwork` key in the `[queue]`/`[archive]` config). Override per
+episode with `--image` on `add`/`narrate` or the `artwork` command;
+give an http(s) URL or a local .jpg/.png file — local files upload to
+`media/<guid>/` on sync.
 
 ## AWS infrastructure
 

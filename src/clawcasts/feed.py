@@ -67,14 +67,25 @@ def build_rss(manifest: Manifest, channel: dict, public_base: str) -> bytes:
             fe.description(episode.description)
         else:
             fe.description(episode.title)
-        if episode.image_url:
-            fe.podcast.itunes_image(episode.image_url)
+        image_url = episode_image_url(episode, public_base)
+        if image_url:
+            fe.podcast.itunes_image(image_url)
         duration = _format_duration(episode.duration_seconds)
         if duration:
             fe.podcast.itunes_duration(duration)
         fe.pubDate(pubdate)
 
     return fg.rss_str(pretty=True)
+
+
+def episode_image_url(episode: Episode, public_base: str) -> str | None:
+    """Resolve an episode's artwork URL from override or local file."""
+    if episode.image_url:
+        return episode.image_url
+    if episode.image_path:
+        name = Path(episode.image_path).name
+        return f"{public_base}/media/{episode.guid}/{name}"
+    return None
 
 
 def _format_duration(seconds: int | None) -> str:

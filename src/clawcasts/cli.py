@@ -63,17 +63,37 @@ def _remote_size(url: str) -> int | None:
         return None
 
 
+_IMAGE_URL = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def _apply_image(episode: Episode, value: str) -> None:
+    """Set episode artwork from an http(s) URL or a local file path."""
+    if _IMAGE_URL.match(value):
+        episode.image_url = value
+        return
+    path = Path(value).expanduser().resolve()
+    if not path.is_file():
+        raise click.ClickException(f"Artwork file not found: {path}")
+    if path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
+        raise click.ClickException(
+            "Artwork must be a .jpg, .jpeg, or .png file.")
+    episode.image_path = str(path)
+
+
 @main.command()
 @click.option("--title", required=True)
 @click.option("--url", help="Remote audio URL for an externally hosted episode.")
 @click.option("--file", "local_file", type=click.Path(exists=True),
               help="Local audio file to publish later.")
 @click.option("--description", default="")
+@click.option("--image", default=None,
+              help="Episode artwork: http(s) URL or local image file.")
 @click.option("--feed", default=QUEUE, type=click.Choice([QUEUE, ARCHIVE]))
 @click.option("--position", type=int, default=None,
               help="Insert at this queue position (default: end).")
 def add(title: str, url: str | None, local_file: str | None,
-        description: str, feed: str, position: int | None) -> None:
+        description: str, image: str | None, feed: str,
+        position: int | None) -> None:
     """Add an episode to a feed."""
     if not url and not local_file:
         raise click.UsageError("Provide --url or --file.")
@@ -94,6 +114,8 @@ def add(title: str, url: str | None, local_file: str | None,
             duration_seconds=duration,
             file_size_bytes=path.stat().st_size,
             status=STATUS_READY, **kwargs)
+    if image:
+        _apply_image(episode, image)
     manifest = Manifest.load(feed)
     pos = manifest.add(episode, position)
     path = manifest.save()
@@ -156,6 +178,35 @@ def move(prefix: str, position: int | None, before: str | None,
     click.echo(f"'{episode.title}' moved to position {new_pos} in '{feed}'")
 
 
+@main.command()
+@click.argument("prefix")
+@click.option("--image", default=None,
+              help="Episode artwork: http(s) URL or local image file.")
+@click.option("--clear", is_flag=True, default=False,
+              help="Remove the episode's artwork override.")
+def artwork(prefix: str, image: str | None, clear: bool) -> None:
+    """Set or clear artwork on an existing episode."""
+    if (image is None) != bool(clear):
+        raise click.UsageError("Use exactly one of --image or --clear.")
+    for feed in (QUEUE, ARCHIVE):
+        manifest = Manifest.load(feed)
+        try:
+            episode = manifest.find(prefix)
+        except LookupError:
+            continue
+        if clear:
+            episode.image_url = None
+            episode.image_path = None
+        else:
+            _apply_image(episode, image)
+        manifest.save()
+        click.echo(f"Artwork updated for '{episode.title}' "
+                   f"({episode.guid[:8]}) in '{feed}'")
+        return
+    raise click.ClickException(
+        f"No episode with guid prefix '{prefix}' in '{QUEUE}' or '{ARCHIVE}'")
+
+
 @main.command("mark-listened")
 @click.argument("prefix")
 def mark_listened(prefix: str) -> None:
@@ -206,6 +257,13 @@ def sync(dry_run: bool, out_dir: str | None) -> None:
                 if not ep.file_size_bytes:
                     ep.file_size_bytes = path.stat().st_size
                 media.append((str(path), f"media/{ep.guid}/{path.name}"))
+            if ep.image_path and not ep.image_url:
+                image = Path(ep.image_path)
+                if not image.exists():
+                    raise click.ClickException(
+                        f"Missing artwork for '{ep.title}': {image}")
+                media.append((str(image),
+                              f"media/{ep.guid}/{image.name}"))
 
     rss: dict[str, bytes] = {}
     for name, manifest in manifests.items():
@@ -226,12 +284,19 @@ def sync(dry_run: bool, out_dir: str | None) -> None:
     execute(sync_plan, dry_run=False, profile_cfg=cfg)
     for name, manifest in manifests.items():
         for ep in manifest.episodes:
+            changed = False
             if ep.local_path and not ep.audio_url and \
                     ep.status == STATUS_READY:
-                filename = Path(ep.local_path).name
-                ep.audio_url = f"{base}/media/{ep.guid}/{filename}"
+                ep.audio_url = \
+                    f"{base}/media/{ep.guid}/{Path(ep.local_path).name}"
                 ep.status = STATUS_PUBLISHED
-        manifest.save()
+                changed = True
+            if ep.image_path and not ep.image_url:
+                ep.image_url = \
+                    f"{base}/media/{ep.guid}/{Path(ep.image_path).name}"
+                changed = True
+            if changed:
+                manifest.save()
     click.echo(f"Published {len(media)} media file(s) and "
                f"{len(rss)} feed(s) to s3://{cfg['bucket']}/")
 
@@ -260,8 +325,10 @@ def _probe_duration(path: Path) -> int | None:
 @click.option("--description", required=True,
               help="Brief summary of the episode; becomes the RSS "
                    "description.")
+@click.option("--image", default=None,
+              help="Episode artwork: http(s) URL or local image file.")
 def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
-            description: str) -> None:
+            description: str, image: str | None) -> None:
     """Narrate a document via Kokoro and add it to the top of the queue.
 
     The calling agent must supply --description as a brief summary of
@@ -280,6 +347,8 @@ def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
 
     episode = Episode.create(title=title, description=description,
                              source_kind="narration")
+    if image:
+        _apply_image(episode, image)
     out_path = (state_dir() / "audio" /
                 f"{_slugify(title)}-{episode.guid[:8]}.mp3")
 

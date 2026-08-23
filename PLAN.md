@@ -84,20 +84,20 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    weights cache to `~/.cache/clawcasts/kokoro/` (override with
    `CLAWCASTS_KOKORO_DIR`; per-path overrides under `[narrate]` config).
    Duration/file-size extraction runs through ffprobe at `add --file`
-   and `narrate` time; mp3 encoding needs ffmpeg. Episode artwork was
-   deferred (see M4).
+   and `narrate` time; mp3 encoding needs ffmpeg.
 4. **M3 — DONE.** `import-feed <rss-url>` lists episodes;
    `add-from-feed <rss-url> --match "<title substring>"` lifts an
    episode with full metadata (description/show notes, episode artwork,
    duration, link, enclosure size). `export-opml` writes subscribe URLs.
-5. **M4 — ideas.** Episode artwork (per-feed default plus per-episode
-   override); auto-filled episode descriptions are DONE for narrated
-   docs: `narrate` requires `--description`, and the calling agent
-   supplies a brief summary of the transcript (external episodes keep
-   the description their source feed provides); optional media copy to
-   S3 for
-   episodes whose upstream hosting may vanish; prune archive older than
-   N months; chapter markers (`podcast:chapters`) for narrated docs;
+5. **M4 — ideas.** Episode artwork is DONE: feeds fall back to the
+   channel `artwork` from config, episodes lifted with `add-from-feed`
+   keep their source artwork, and any episode can take an override via
+   `--image` on `add`/`narrate` or the `artwork` command (local files
+   upload to S3 next to the audio; URLs pass through). Narrated docs
+   require `--description`, a brief summary the calling agent supplies.
+   Remaining ideas: optional media copy to S3 for
+   episodes whose upstream hosting may vanish; chapter markers
+   (`podcast:chapters`) for narrated docs;
    optional cron/systemd timer for scheduled syncs on the claw machine.
 
 ## Live deployment
