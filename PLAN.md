@@ -91,9 +91,11 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    episode with full metadata (description/show notes, episode artwork,
    duration, link, enclosure size). `export-opml` writes subscribe URLs.
 5. **M4 — ideas.** Episode artwork (per-feed default plus per-episode
-   override); auto-filled episode descriptions for narrated docs
-   (e.g. first paragraph or a short summary, with the existing
-   `--description` taking precedence); optional media copy to S3 for
+   override); auto-filled episode descriptions are DONE for narrated
+   docs: `narrate` requires `--description`, and the calling agent
+   supplies a brief summary of the transcript (external episodes keep
+   the description their source feed provides); optional media copy to
+   S3 for
    episodes whose upstream hosting may vanish; prune archive older than
    N months; chapter markers (`podcast:chapters`) for narrated docs;
    optional cron/systemd timer for scheduled syncs on the claw machine.

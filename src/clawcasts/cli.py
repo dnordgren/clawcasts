@@ -257,10 +257,16 @@ def _probe_duration(path: Path) -> int | None:
               help="Kokoro voice name (see Kokoro-82M VOICES.md).")
 @click.option("--speed", type=float, default=1.0, show_default=True)
 @click.option("--lang", default="en-us", show_default=True)
-@click.option("--description", default="")
+@click.option("--description", required=True,
+              help="Brief summary of the episode; becomes the RSS "
+                   "description.")
 def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
             description: str) -> None:
-    """Narrate a document via Kokoro and add it to the top of the queue."""
+    """Narrate a document via Kokoro and add it to the top of the queue.
+
+    The calling agent must supply --description as a brief summary of
+    the transcript.
+    """
     from .audio import AudioToolError
     from .narrate import NarrateError
     from .narrate import narrate as run_narration

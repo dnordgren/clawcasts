@@ -28,7 +28,7 @@ uv sync --extra narrate      # Or: uv tool install --extra narrate .
 | `clawcasts remove <prefix>` | Remove from a feed |
 | `clawcasts mark-listened <prefix>` | Queue → archive feed |
 | `clawcasts mark-new <prefix>` | Archive → queue feed |
-| `clawcasts narrate <doc> --title T` | Kokoro narration of a .md/.txt file → queue top |
+| `clawcasts narrate <doc> --title T --description S` | Kokoro narration of a .md/.txt file → queue top |
 | `clawcasts sync [--dry-run]` | Generate RSS and upload to S3 |
 | `clawcasts import-feed <rss-url>` | List episodes available to lift |
 | `clawcasts export-opml [--out FILE]` | Export queue/archive URLs as OPML |
