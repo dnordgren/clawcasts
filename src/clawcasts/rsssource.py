@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 ITUNES = "{http://www.itunes.com/dtds/podcast-1.0.dtd}"
 CONTENT = "{http://purl.org/rss/1.0/modules/content/}"
+PODCAST = "{https://podcastindex.org/namespace/1.0}"
 
 USER_AGENT = "clawcasts/0.1"
 
@@ -50,6 +51,7 @@ def fetch_channel(feed_url: str) -> dict:
     for item in channel.findall("item"):
         enclosure = item.find("enclosure")
         art_item = item.find(f"{ITUNES}image")
+        chapters_item = item.find(f"{PODCAST}chapters")
         result["items"].append({
             "guid": (item.findtext("guid") or "").strip(),
             "title": (item.findtext("title") or "").strip(),
@@ -68,6 +70,8 @@ def fetch_channel(feed_url: str) -> dict:
                              or None),
             "image_url": (art_item.get("href") if art_item is not None
                           else None),
+            "chapters_url": (chapters_item.get("url")
+                             if chapters_item is not None else None),
             "duration_seconds": _duration_to_seconds(
                 item.findtext(f"{ITUNES}duration")),
         })

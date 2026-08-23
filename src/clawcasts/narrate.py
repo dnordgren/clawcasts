@@ -7,6 +7,7 @@ ffmpeg on PATH. Model weights are downloaded once to a cache directory
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import urllib.request
@@ -82,6 +83,7 @@ _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _HTML_TAG = re.compile(r"<[^>]+>")
 _HEADING = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+_HEADING_LINE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 _LIST_MARKER = re.compile(r"^(\s*)[-*+]\s+", re.MULTILINE)
 _EMPHASIS = re.compile(r"\*{1,3}([^*]+)\*{1,3}|_{1,3}([^_]+)_{1,3}")
 _INLINE_CODE = re.compile(r"`([^`]*)`")
@@ -135,6 +137,49 @@ def chunk_text(text: str, limit: int = CHUNK_CHARS) -> list[str]:
     return chunks
 
 
+def chunk_sections(md: str, limit: int = CHUNK_CHARS,
+                   depth: int | None = None
+                   ) -> list[tuple[str, str | None]]:
+    """Split markdown into (chunk, chapter_title) pairs.
+
+    Chapter titles come from the document's headings; text before the
+    first heading (or before any heading at or above `depth`) is paired
+    with None. Deeper headings still reset sections but map to their
+    nearest ancestor within the depth limit.
+    """
+    md = _FRONT_MATTER.sub("", md)
+    md = _FENCED_CODE.sub("", md)
+    pairs: list[tuple[str, str | None]] = []
+    stack: list[tuple[int, str]] = []
+    body: list[str] = []
+
+    def chapter() -> str | None:
+        for level, title in reversed(stack):
+            if depth is None or level <= depth:
+                return title
+        return None
+
+    def flush() -> None:
+        text = markdown_to_text("\n".join(body))
+        body.clear()
+        if not text:
+            return
+        pairs.extend((c, chapter()) for c in chunk_text(text, limit))
+
+    for line in md.splitlines():
+        m = _HEADING_LINE.match(line)
+        if m:
+            flush()
+            level = len(m.group(1))
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            stack.append((level, m.group(2)))
+        else:
+            body.append(line)
+    flush()
+    return pairs
+
+
 def _hard_wrap(paragraph: str, limit: int) -> list[str]:
     if len(paragraph) <= limit:
         return [paragraph]
@@ -178,14 +223,31 @@ def _load_kokoro(cfg: dict | None):
 def narrate(doc_path: str, out_path: str, voice: str = "af_heart",
             speed: float = 1.0, lang: str = "en-us",
             title: str = "", artist: str = "",
-            cfg: dict | None = None) -> str:
-    """Narrate a document to mp3 via Kokoro. Returns the output path."""
-    text = document_text(doc_path)
-    chunks = chunk_text(text)
+            cfg: dict | None = None,
+            chapters_depth: int | None = None
+            ) -> tuple[str, list[dict]]:
+    """Narrate a document to mp3 via Kokoro.
+
+    Returns the output path plus chapter markers derived from the
+    document's markdown headings as {"title", "start_time"} dicts with
+    start times in seconds.
+    """
+    p = Path(doc_path)
+    raw = p.read_text(encoding="utf-8", errors="replace")
+    if p.suffix.lower() in {".md", ".markdown"}:
+        pairs = chunk_sections(raw, depth=chapters_depth)
+    else:
+        text = raw.strip()
+        if not text:
+            raise NarrateError(f"No narratable text found in {p}")
+        pairs = [(chunk, None) for chunk in chunk_text(text)]
+    if not pairs:
+        raise NarrateError(f"No narratable text found in {p}")
     kokoro = _load_kokoro(cfg)
 
     tmp_wav = Path(out_path).with_suffix(".wav.tmp")
     tmp_wav.parent.mkdir(parents=True, exist_ok=True)
+    chapters: list[dict] = []
     try:
         import numpy as np
 
@@ -193,9 +255,10 @@ def narrate(doc_path: str, out_path: str, voice: str = "af_heart",
             wav.setnchannels(1)
             wav.setsampwidth(2)
             wav.setframerate(SAMPLE_RATE)
-            for i, chunk in enumerate(chunks):
-                click.echo(f"Synthesizing chunk {i + 1}/{len(chunks)} "
+            for i, (chunk, chapter) in enumerate(pairs):
+                click.echo(f"Synthesizing chunk {i + 1}/{len(pairs)} "
                            f"({len(chunk)} chars) ...")
+                start = wav.tell()
                 samples, rate = kokoro.create(chunk, voice=voice,
                                               speed=speed, lang=lang)
                 if rate != SAMPLE_RATE:
@@ -204,7 +267,23 @@ def narrate(doc_path: str, out_path: str, voice: str = "af_heart",
                         f"expected {SAMPLE_RATE}")
                 pcm = np.clip(np.asarray(samples), -1.0, 1.0)
                 wav.writeframes((pcm * 32767).astype(np.int16).tobytes())
+                if chapter and (not chapters
+                                or chapters[-1]["title"] != chapter):
+                    chapters.append({"title": chapter,
+                                     "start_time": start / SAMPLE_RATE})
         encode_mp3(tmp_wav, Path(out_path), title=title, artist=artist)
     finally:
         tmp_wav.unlink(missing_ok=True)
-    return out_path
+    return out_path, chapters
+
+
+def write_chapters_json(path: str | Path, chapters: list[dict]) -> Path:
+    """Write chapters as Podcasting 2.0 JSON (times in milliseconds)."""
+    payload = {
+        "version": "1.2.0",
+        "chapters": [{"startTime": int(round(c["start_time"] * 1000)),
+                      "title": c["title"]} for c in chapters],
+    }
+    p = Path(path)
+    p.write_text(json.dumps(payload, indent=2) + "\n")
+    return p

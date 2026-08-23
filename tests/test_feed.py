@@ -1,6 +1,7 @@
 import unittest
 
-from clawcasts.feed import _format_duration, build_rss, episode_image_url
+from clawcasts.feed import (_format_duration, build_rss,
+                            episode_chapters_url, episode_image_url)
 from clawcasts.state import Episode, Manifest, STATUS_READY
 
 
@@ -73,6 +74,50 @@ class BuildRssAuthorTests(unittest.TestCase):
     def test_no_episode_author_uses_channel_only(self):
         xml = self._rss(_episode())
         self.assertNotIn("itunes:author>Episode One<", xml)
+
+
+class EpisodeChaptersUrlTests(unittest.TestCase):
+    def test_prefers_explicit_url(self):
+        ep = _episode(chapters_path="/tmp/ep.chapters.json",
+                      chapters_url="https://cdn.example.com/ch.json")
+        self.assertEqual(episode_chapters_url(ep, "https://cdn.example.com"),
+                         "https://cdn.example.com/ch.json")
+
+    def test_derives_url_from_local_path(self):
+        ep = _episode(chapters_path="/tmp/ep.chapters.json")
+        url = episode_chapters_url(ep, "https://cdn.example.com")
+        self.assertEqual(url,
+                         "https://cdn.example.com/media/guid-1/"
+                         "ep.chapters.json")
+
+    def test_none_without_chapters(self):
+        self.assertIsNone(episode_chapters_url(_episode(), "https://x"))
+
+
+class BuildRssChaptersTests(unittest.TestCase):
+    channel = {"title": "Queue", "description": "d", "link": "https://x"}
+
+    def _rss(self, manifest: Manifest, channel: dict | None = None) -> str:
+        return build_rss(manifest, channel or dict(self.channel),
+                         "https://x").decode()
+
+    def test_external_chapters_url_by_reference(self):
+        ep = _episode(
+            chapters_url="https://example.org/orig.chapters.json")
+        xml = self._rss(_manifest(ep))
+        self.assertIn("podcast:chapters", xml)
+        self.assertIn('url="https://example.org/orig.chapters.json"', xml)
+        self.assertIn('type="application/json+chapters"', xml)
+
+    def test_local_chapters_resolves_to_media_url(self):
+        ep = _episode(chapters_path="/tmp/ep.chapters.json")
+        xml = self._rss(_manifest(ep))
+        self.assertIn(
+            'url="https://x/media/guid-1/ep.chapters.json"', xml)
+
+    def test_no_chapters_tag_when_none_apply(self):
+        xml = self._rss(_manifest(_episode()))
+        self.assertNotIn("podcast:chapters", xml)
 
 
 class FormatDurationTests(unittest.TestCase):

@@ -95,9 +95,14 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    `--image` on `add`/`narrate` or the `artwork` command (local files
    upload to S3 next to the audio; URLs pass through). Narrated docs
    require `--description`, a brief summary the calling agent supplies.
-   Remaining ideas: chapter markers
-   (`podcast:chapters`) for narrated docs;
-   optional cron/systemd timer for scheduled syncs on the claw machine.
+   Chapter markers (`podcast:chapters`) are DONE: narrated markdown
+   headings become chapters, timestamped from real synthesized
+   durations and published as `.chapters.json` under `media/<guid>/`;
+   `--chapters-depth N` limits which heading levels become chapters,
+   and docs with fewer than two usable headings get none. Episodes
+   lifted with `add-from-feed` carry a source `<podcast:chapters>` URL
+   by reference (never fetched or rehosted). Remaining idea: optional
+   cron/systemd timer for scheduled syncs on the claw machine.
 6. **Audiobook ingestion — DONE.** `add --file` accepts multiple files
    (variadic PARTS after the option); more than one file concatenates
    losslessly via the ffmpeg concat demuxer (`-c copy`) into a single
@@ -142,5 +147,4 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
 
 - Pocket Casts refresh cadence: does it honor short TTL without explicit
   ping? (It has no public ping API; invalidation covers us.)
-- Chapter markers (`podcast:chapters`) for narrated docs — later.
 - Whether archive feed should also drop episodes older than N months.

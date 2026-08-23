@@ -47,6 +47,8 @@ def session_for(cfg: dict):
 
 
 def _content_type(path: Path) -> str:
+    if path.name.endswith(".chapters.json"):
+        return "application/json+chapters"
     guessed = mimetypes.guess_type(path.name)[0]
     return guessed or "audio/mpeg"
 

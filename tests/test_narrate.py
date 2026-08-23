@@ -1,10 +1,12 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from clawcasts.feed import _format_duration
 from clawcasts.narrate import (NarrateError, chunk_text, document_text,
-                               markdown_to_text)
+                               markdown_to_text, chunk_sections,
+                               write_chapters_json)
 
 
 class MarkdownToTextTests(unittest.TestCase):
@@ -67,6 +69,69 @@ class ChunkTextTests(unittest.TestCase):
         joined = " ".join(chunk_text(text, limit=20))
         for word in ("Alpha", "Beta", "Gamma"):
             self.assertIn(word, joined)
+
+
+class ChunkSectionsTests(unittest.TestCase):
+    def test_maps_chunks_to_sections(self):
+        md = "# Intro\n\nIntro paragraph.\n\n# Deep Dive\n\nBody text here."
+        pairs = chunk_sections(md, limit=100)
+        titles = [title for _, title in pairs]
+        self.assertEqual(titles, ["Intro", "Deep Dive"])
+        self.assertIn("Intro paragraph.", pairs[0][0])
+        self.assertIn("Body text here.", pairs[1][0])
+
+    def test_preamble_has_no_title(self):
+        md = "Loose preamble.\n\n# First\n\nSection body."
+        pairs = chunk_sections(md, limit=100)
+        self.assertIsNone(pairs[0][1])
+        self.assertEqual(pairs[1][1], "First")
+
+    def test_depth_limits_chapter_levels(self):
+        md = "# Top\n\nTop body.\n\n## Sub\n\nSub body."
+        pairs = chunk_sections(md, limit=100, depth=1)
+        titles = {title for _, title in pairs}
+        self.assertEqual(titles, {"Top"})
+
+    def test_nested_headings_reset_stack(self):
+        md = "# A\n\n## B\n\nB body.\n\n# C\n\nC body."
+        pairs = chunk_sections(md, limit=100)
+        self.assertEqual([t for _, t in pairs], ["B", "C"])
+
+    def test_plain_text_has_no_titles(self):
+        md = "Just prose.\n\nMore prose. # not a heading"
+        pairs = chunk_sections(md, limit=100)
+        self.assertTrue(pairs)
+        for _, title in pairs:
+            self.assertIsNone(title)
+
+    def test_no_loss_of_content(self):
+        md = "# One\n\nAlpha.\n\n## Two\n\nBeta.\n\n### Three\n\nGamma."
+        joined = " ".join(c for c, _ in chunk_sections(md, limit=20))
+        for word in ("Alpha", "Beta", "Gamma"):
+            self.assertIn(word, joined)
+
+    def test_headings_inside_code_fences_ignored(self):
+        md = "# Real\n\n```\n# Not a heading\n```\n\nBody text."
+        pairs = chunk_sections(md, limit=100)
+        titles = {title for _, title in pairs}
+        self.assertEqual(titles, {"Real"})
+
+
+class WriteChaptersJsonTests(unittest.TestCase):
+    def test_structure_and_timestamps(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "ep.chapters.json"
+        write_chapters_json(path, [
+            {"title": "Intro", "start_time": 0.0},
+            {"title": "Deep Dive", "start_time": 61.25},
+        ])
+        data = json.loads(path.read_text())
+        self.assertEqual(data["version"], "1.2.0")
+        self.assertEqual(data["chapters"], [
+            {"startTime": 0, "title": "Intro"},
+            {"startTime": 61250, "title": "Deep Dive"},
+        ])
 
 
 class DocumentTextTests(unittest.TestCase):

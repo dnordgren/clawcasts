@@ -29,7 +29,7 @@ uv sync --extra narrate      # Or: uv tool install --extra narrate .
 | `clawcasts mark-listened <prefix>` | Queue → archive feed |
 | `clawcasts mark-new <prefix>` | Archive → queue feed |
 | `clawcasts artwork <prefix> (--image I \| --clear)` | Set or clear per-episode artwork |
-| `clawcasts narrate <doc> --title T --description S [--image I]` | Kokoro narration of a .md/.txt file → queue top |
+| `clawcasts narrate <doc> --title T --description S [--image I] [--chapters-depth N]` | Kokoro narration of a .md/.txt file → queue top |
 | `clawcasts sync [--dry-run]` | Generate RSS and upload to S3 |
 | `clawcasts import-feed <rss-url>` | List episodes available to lift |
 | `clawcasts export-opml [--out FILE]` | Export queue/archive URLs as OPML |
@@ -52,6 +52,14 @@ Episodes without their own artwork inherit the feed's channel image
 episode with `--image` on `add`/`narrate` or the `artwork` command;
 give an http(s) URL or a local .jpg/.png file — local files upload to
 `media/<guid>/` on sync.
+
+Narrated markdown docs get chapter markers: headings become
+`podcast:chapters` entries (Podcasting 2.0), timestamped from the
+actual synthesized audio and published as a `.chapters.json` file next
+to the mp3 on sync. Docs with fewer than two usable headings produce no
+chapters; pass `--chapters-depth N` to keep only heading levels ≤ N.
+External episodes lifted with `add-from-feed` carry a source
+`<podcast:chapters>` tag by reference — the file is never rehosted.
 
 ## AWS infrastructure
 
