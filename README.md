@@ -9,6 +9,13 @@ uv sync                      # Set up the environment
 uv run clawcasts --help      # Or install globally: uv tool install .
 ```
 
+Narration (`clawcasts narrate`) needs the optional Kokoro extra and
+ffmpeg on PATH; weights download once to `~/.cache/clawcasts/kokoro/`:
+
+```bash
+uv sync --extra narrate      # Or: uv tool install --extra narrate .
+```
+
 ## Commands
 
 | Command | Purpose |
@@ -21,7 +28,7 @@ uv run clawcasts --help      # Or install globally: uv tool install .
 | `clawcasts remove <prefix>` | Remove from a feed |
 | `clawcasts mark-listened <prefix>` | Queue → archive feed |
 | `clawcasts mark-new <prefix>` | Archive → queue feed |
-| `clawcasts narrate <doc> --title T` | Kokoro narration → queue (M2) |
+| `clawcasts narrate <doc> --title T` | Kokoro narration of a .md/.txt file → queue top |
 | `clawcasts sync [--dry-run]` | Generate RSS and upload to S3 |
 | `clawcasts import-feed <rss-url>` | List episodes available to lift |
 | `clawcasts export-opml [--out FILE]` | Export queue/archive URLs as OPML |
@@ -83,5 +90,7 @@ URLs in PLAN.md.
 
 ## Status
 
-M1 is live (S3 + CloudFront). M3 import-feed / add-from-feed / OPML
-are wired. Narration via Kokoro is still M2 — see PLAN.md phases.
+M1 is live (S3 + CloudFront). M2 narration is wired: `narrate` renders
+markdown/plain text to mp3 via Kokoro, and ffprobe fills in duration and
+file size for local files. M3 import-feed / add-from-feed / OPML are
+wired. Remaining ideas live in PLAN.md (M4).

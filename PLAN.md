@@ -78,16 +78,25 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    generates RSS locally and prints the upload plan.
 2. **M1 — DONE, LIVE.** S3 upload + RSS publish + CloudFront
    invalidation. See "Live deployment" below.
-3. **M2 — NEXT.** `narrate` wired to Kokoro; duration/file-size
-   extraction (mutagen or ffprobe); episode artwork.
+3. **M2 — DONE.** `narrate <doc> --title T` narrates markdown or plain
+   text via kokoro-onnx (optional `narrate` extra) and adds the mp3 to
+   the top of the queue. Text is chunked by paragraph (~1200 chars);
+   weights cache to `~/.cache/clawcasts/kokoro/` (override with
+   `CLAWCASTS_KOKORO_DIR`; per-path overrides under `[narrate]` config).
+   Duration/file-size extraction runs through ffprobe at `add --file`
+   and `narrate` time; mp3 encoding needs ffmpeg. Episode artwork was
+   deferred (see M4).
 4. **M3 — DONE.** `import-feed <rss-url>` lists episodes;
    `add-from-feed <rss-url> --match "<title substring>"` lifts an
    episode with full metadata (description/show notes, episode artwork,
    duration, link, enclosure size). `export-opml` writes subscribe URLs.
-5. **M4 — ideas.** Optional media copy to S3 for episodes whose
-   upstream hosting may vanish; prune archive older than N months;
-   chapter markers (`podcast:chapters`) for narrated docs; optional
-   cron/systemd timer for scheduled syncs on the claw machine.
+5. **M4 — ideas.** Episode artwork (per-feed default plus per-episode
+   override); auto-filled episode descriptions for narrated docs
+   (e.g. first paragraph or a short summary, with the existing
+   `--description` taking precedence); optional media copy to S3 for
+   episodes whose upstream hosting may vanish; prune archive older than
+   N months; chapter markers (`podcast:chapters`) for narrated docs;
+   optional cron/systemd timer for scheduled syncs on the claw machine.
 
 ## Live deployment
 
@@ -111,6 +120,9 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
 - Always `sync --dry-run` before `sync`; show Derek the plan first.
 - Env overrides for testing: `CLAWCASTS_STATE_DIR`,
   `CLAWCASTS_CONFIG`. Local dev: `uv sync && uv run clawcasts ...`.
+- Narration needs the optional extra (`uv sync --extra narrate`) plus
+  ffmpeg/ffprobe on PATH; model weights live outside the repo in
+  `~/.cache/clawcasts/kokoro/`.
 - Known behavior: feedgen emits items sorted ascending by pubDate in the
   XML document; clients order by pubDate anyway, so effective queue
   order always matches manifest position 0 = newest.

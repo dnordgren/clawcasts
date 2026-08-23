@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -9,8 +10,7 @@ import click
 from . import __version__
 from . import feed as feedgen_mod
 from .state import (ARCHIVE, QUEUE, Episode, Manifest, STATUS_PENDING_AUDIO,
-                    STATUS_PUBLISHED, STATUS_READY, now_iso, state_dir,
-                    transfer)
+                    STATUS_PUBLISHED, STATUS_READY, state_dir, transfer)
 
 
 @click.group()
@@ -87,9 +87,13 @@ def add(title: str, url: str | None, local_file: str | None,
         if size is None:
             click.echo("Warning: could not determine remote file size.", err=True)
     else:
-        episode = Episode.create(source_kind="narration",
-                                 local_path=str(Path(local_file).resolve()),
-                                 status=STATUS_READY, **kwargs)
+        path = Path(local_file).resolve()
+        duration = _probe_duration(path)
+        episode = Episode.create(
+            source_kind="narration", local_path=str(path),
+            duration_seconds=duration,
+            file_size_bytes=path.stat().st_size,
+            status=STATUS_READY, **kwargs)
     manifest = Manifest.load(feed)
     pos = manifest.add(episode, position)
     path = manifest.save()
@@ -232,17 +236,68 @@ def sync(dry_run: bool, out_dir: str | None) -> None:
                f"{len(rss)} feed(s) to s3://{cfg['bucket']}/")
 
 
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:40] or "episode"
+
+
+def _probe_duration(path: Path) -> int | None:
+    from .audio import probe_duration_seconds
+
+    duration = probe_duration_seconds(path)
+    if duration is None:
+        click.echo("Warning: ffprobe unavailable; duration not set.", err=True)
+    return duration
+
+
 @main.command()
 @click.argument("doc", type=click.Path(exists=True))
 @click.option("--title", required=True)
-@click.option("--voice", default="af_heart")
-def narrate(doc: str, title: str, voice: str) -> None:
-    """Narrate a document via Kokoro and add it to the queue."""
+@click.option("--voice", default="af_heart", show_default=True,
+              help="Kokoro voice name (see Kokoro-82M VOICES.md).")
+@click.option("--speed", type=float, default=1.0, show_default=True)
+@click.option("--lang", default="en-us", show_default=True)
+@click.option("--description", default="")
+def narrate(doc: str, title: str, voice: str, speed: float, lang: str,
+            description: str) -> None:
+    """Narrate a document via Kokoro and add it to the top of the queue."""
+    from .audio import AudioToolError
+    from .narrate import NarrateError
     from .narrate import narrate as run_narration
-    out_path = state_dir() / "audio" / f"{now_iso().replace(':', '')}.mp3"
-    result = run_narration(doc, str(out_path), voice=voice)
-    add.callback(title=title, url=None, local_file=result, description="",
-                 feed=QUEUE, position=0)
+
+    cfg = {}
+    cfg_path = feedgen_mod.config_path()
+    if cfg_path.exists():
+        cfg = _load_toml(cfg_path)
+    narrate_cfg = dict(cfg.get("narrate", {}))
+    artist = (cfg.get(QUEUE, {}) or {}).get("author", "")
+
+    episode = Episode.create(title=title, description=description,
+                             source_kind="narration")
+    out_path = (state_dir() / "audio" /
+                f"{_slugify(title)}-{episode.guid[:8]}.mp3")
+
+    try:
+        run_narration(doc, str(out_path), voice=voice, speed=speed,
+                      lang=lang, title=title, artist=artist,
+                      cfg=narrate_cfg)
+    except (NarrateError, AudioToolError) as exc:
+        raise click.ClickException(str(exc))
+
+    audio = Path(out_path)
+    episode.local_path = str(audio.resolve())
+    episode.duration_seconds = _probe_duration(audio)
+    episode.file_size_bytes = audio.stat().st_size
+    episode.status = STATUS_READY
+
+    manifest = Manifest.load(QUEUE)
+    manifest.add(episode, 0)
+    manifest.save()
+    minutes = (episode.duration_seconds or 0) // 60
+    size_mb = (episode.file_size_bytes or 0) / 1_048_576
+    click.echo(f"Added [0] {title} ({episode.guid[:8]}, "
+               f"~{minutes}m, {size_mb:.1f} MB) to '{QUEUE}'")
+    click.echo(f"Audio: {episode.local_path}")
 
 
 @main.command()
