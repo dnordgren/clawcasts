@@ -95,8 +95,7 @@ clawcasts sync [--dry-run]              # Upload + regenerate RSS + invalidate
    `--image` on `add`/`narrate` or the `artwork` command (local files
    upload to S3 next to the audio; URLs pass through). Narrated docs
    require `--description`, a brief summary the calling agent supplies.
-   Remaining ideas: optional media copy to S3 for
-   episodes whose upstream hosting may vanish; chapter markers
+   Remaining ideas: chapter markers
    (`podcast:chapters`) for narrated docs;
    optional cron/systemd timer for scheduled syncs on the claw machine.
 
